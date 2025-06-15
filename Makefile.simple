@@ -1,0 +1,65 @@
+# Simple Makefile for MyOS - Testing C Kernel Integration
+
+# Tools
+ASM = nasm
+CC = gcc
+LD = ld
+
+# Directories
+BUILD_DIR = build
+
+# Simple flags that definitely work
+CFLAGS = -m32 -c -nostdlib -ffreestanding -fno-pic -O0 -Wall
+LDFLAGS = -m elf_i386 -Ttext 0x1000 --oformat binary -nostdlib
+
+# Build everything
+all: $(BUILD_DIR)/myos.bin
+
+# Create build directory
+$(BUILD_DIR):
+	mkdir -p $(BUILD_DIR)
+
+# Build bootloader
+$(BUILD_DIR)/bootloader.bin: enhanced_boot.asm | $(BUILD_DIR)
+	@echo "Building bootloader..."
+	$(ASM) -f bin $< -o $@
+	@echo "Bootloader size: $$(stat -c%s $@) bytes"
+
+# Build C kernel
+$(BUILD_DIR)/kernel.o: kernel/kernel.c | $(BUILD_DIR)
+	@echo "Compiling C kernel..."
+	$(CC) $(CFLAGS) $< -o $@
+
+$(BUILD_DIR)/kernel.bin: $(BUILD_DIR)/kernel.o
+	@echo "Linking C kernel..."
+	$(LD) $(LDFLAGS) $< -o $@
+	@echo "Kernel size: $$(stat -c%s $@) bytes"
+
+# Combine bootloader and kernel
+$(BUILD_DIR)/myos.bin: $(BUILD_DIR)/bootloader.bin $(BUILD_DIR)/kernel.bin
+	@echo "Creating OS image..."
+	cat $^ > $@
+	@echo "Total OS size: $$(stat -c%s $@) bytes"
+
+# Run in QEMU
+run: $(BUILD_DIR)/myos.bin
+	@echo "Starting MyOS..."
+	qemu-system-x86_64 -drive format=raw,file=$<
+
+# Test just bootloader
+test-boot: $(BUILD_DIR)/bootloader.bin
+	@echo "Testing bootloader only..."
+	qemu-system-x86_64 -drive format=raw,file=$<
+
+# Clean
+clean:
+	rm -rf $(BUILD_DIR)
+
+# Show info
+info: $(BUILD_DIR)/myos.bin
+	@echo "=== MyOS Build Info ==="
+	@echo "Bootloader: $$(stat -c%s $(BUILD_DIR)/bootloader.bin) bytes"
+	@echo "Kernel: $$(stat -c%s $(BUILD_DIR)/kernel.bin) bytes"  
+	@echo "Total: $$(stat -c%s $<) bytes"
+
+.PHONY: all run test-boot clean info

@@ -1,0 +1,70 @@
+# Makefile for MyOS
+# Builds bootloader and C kernel
+
+# Tools
+ASM = nasm
+CC = gcc
+LD = ld
+
+# Flags
+CFLAGS = -m32 -nostdlib -nostdinc -fno-builtin -fno-stack-protector \
+         -nostartfiles -nodefaultlibs -Wall -Wextra -Werror -c \
+         -fno-pic -fno-pie -ffreestanding
+LDFLAGS = -m elf_i386 -Ttext 0x1000 --oformat binary
+
+# Directories
+BUILD_DIR = build
+KERNEL_DIR = kernel
+
+# Targets
+BOOTLOADER = $(BUILD_DIR)/bootloader.bin
+KERNEL = $(BUILD_DIR)/kernel.bin
+OS_IMAGE = $(BUILD_DIR)/myos.bin
+
+.PHONY: all clean run debug
+
+all: $(OS_IMAGE)
+
+# Build the complete OS image
+$(OS_IMAGE): $(BOOTLOADER) $(KERNEL)
+	@echo "Creating OS image..."
+	cat $(BOOTLOADER) $(KERNEL) > $(OS_IMAGE)
+	# Pad to ensure proper size
+	truncate -s 1440K $(OS_IMAGE)
+
+# Build bootloader
+$(BOOTLOADER): enhanced_boot.asm | $(BUILD_DIR)
+	@echo "Building bootloader..."
+	$(ASM) -f bin enhanced_boot.asm -o $(BOOTLOADER)
+
+# Build C kernel
+$(KERNEL): $(KERNEL_DIR)/kernel.c | $(BUILD_DIR)
+	@echo "Building C kernel..."
+	$(CC) $(CFLAGS) $(KERNEL_DIR)/kernel.c -o $(BUILD_DIR)/kernel.o
+	$(LD) $(LDFLAGS) $(BUILD_DIR)/kernel.o -o $(KERNEL)
+
+# Create build directory
+$(BUILD_DIR):
+	mkdir -p $(BUILD_DIR)
+
+# Run in QEMU
+run: $(OS_IMAGE)
+	qemu-system-x86_64 -drive format=raw,file=$(OS_IMAGE)
+
+# Run with debug info
+debug: $(OS_IMAGE)
+	qemu-system-x86_64 -drive format=raw,file=$(OS_IMAGE) -monitor stdio
+
+# Clean build files
+clean:
+	rm -rf $(BUILD_DIR)
+
+# Show help
+help:
+	@echo "MyOS Build System"
+	@echo "Available targets:"
+	@echo "  all    - Build complete OS"
+	@echo "  run    - Build and run in QEMU"
+	@echo "  debug  - Run with QEMU monitor"
+	@echo "  clean  - Clean build files"
+	@echo "  help   - Show this help"
